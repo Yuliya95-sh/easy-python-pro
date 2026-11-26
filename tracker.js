@@ -160,12 +160,19 @@
         <div class="ep-gate-err small"></div>
         <button class="btn btn-primary" type="submit">${restore ? "Восстановить" : "Начать"}</button>
         <button class="btn btn-ghost" type="button" data-a="switch">${restore ? "Я здесь впервые" : "Я уже занимался(ась) — восстановить прогресс"}</button>
+        <a class="small" href="#/teacher" data-a="teacher" style="text-align:center;display:block;margin-top:4px">👩‍🏫 Я учитель — войти в кабинет</a>
       </form>`;
       document.body.appendChild(g);
       document.body.classList.add("gate-open");
       const f = g.querySelector("form");
       const err = g.querySelector(".ep-gate-err");
       g.querySelector('[data-a="switch"]').onclick = () => this.showGate(restore ? "" : "restore");
+      g.querySelector('[data-a="teacher"]').onclick = (e) => {
+        e.preventDefault();
+        g.remove(); document.body.classList.remove("gate-open");
+        location.hash = "#/teacher";
+        this.showGate();   // окно вернётся, если уйти со страницы учителя без входа ученика
+      };
       setTimeout(() => f.name.focus(), 50);
       // проверяем код класса сразу, чтобы ученик видел, к какому учителю попадёт
       const gInfo = g.querySelector(".ep-gate-group");
