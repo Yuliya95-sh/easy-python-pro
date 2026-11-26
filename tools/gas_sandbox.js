@@ -84,7 +84,9 @@
   }) };
   const ContentService = { MimeType: { JSON: "json" }, createTextOutput: (s) => ({ s, setMimeType() { return this; } }) };
   const LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
-  const Utilities = { getUuid: () => crypto.randomUUID(), computeHmacSha256Signature: hmac };
+  const Utilities = { getUuid: () => crypto.randomUUID(), computeHmacSha256Signature: hmac,
+    DigestAlgorithm: { SHA_256: "SHA_256" }, Charset: { UTF_8: "UTF_8" },
+    computeDigest: (alg, value) => Array.from(sha256(utf8(value))).map((b) => (b > 127 ? b - 256 : b)) };
   const PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => db.props[k] ?? null, setProperty: (k, v) => { db.props[k] = v; save(); } }) };
 
   /* ---------- настоящий Code.gs ---------- */

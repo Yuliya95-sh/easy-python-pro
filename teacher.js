@@ -399,7 +399,20 @@
     body.innerHTML = "";
     if (warn) body.appendChild(h(`<div class="note warn" style="margin-bottom:14px"><div class="note-title">Не всё загрузилось</div><p>${esc(warn)}</p></div>`));
     body.appendChild(h(`<div class="card" style="margin-bottom:14px"><h2 style="margin:0 0 4px;text-transform:none">${esc(s.name)} <span class="muted" style="font-weight:500">${esc(clsOf(s))}</span></h2>
-      <p class="small muted" style="margin:0">Первый вход: ${when(s.first)} · последняя активность: ${when(s.last)} · действий: ${s.actions}</p></div>`));
+      <p class="small muted" style="margin:0">Первый вход: ${when(s.first)} · последняя активность: ${when(s.last)} · действий: ${s.actions}</p>
+      <div class="t-pin" style="margin-top:10px"><button class="btn btn-ghost btn-sm" data-a="pin">🔑 Сбросить PIN ученика</button>
+        <span class="small muted">— если ученик забыл PIN и не может восстановить прогресс</span></div></div>`));
+    body.querySelector('[data-a="pin"]').onclick = async (e) => {
+      if (!confirm(`Выдать ученику «${s.name}» новый PIN? Старый PIN перестанет работать.`)) return;
+      e.target.disabled = true;
+      try {
+        const r = await api("resetPin", { sid });
+        if (!r.ok) throw new Error(r.error || "ошибка скрипта");
+        body.querySelector(".t-pin").innerHTML = `<div class="note"><div class="note-title">Новый PIN: <span style="font-size:1.4em;letter-spacing:.15em">${esc(r.pin)}</span></div>
+          <p class="small" style="margin:6px 0 0">Передайте ученику. На сайте он нажимает «Я уже занимался(ась) — восстановить прогресс» и вводит:
+          имя <b>${esc(r.name)}</b>, класс <b>${esc(r.cls)}</b>, PIN <b>${esc(r.pin)}</b>. Весь прогресс вернётся.</p></div>`;
+      } catch (x) { alert("Не удалось сбросить PIN: " + x.message); e.target.disabled = false; }
+    };
     body.appendChild(h(`<div class="stats ep-stats" style="margin-bottom:16px">
       <div class="stat hl"><b>${Number(s.pct) || 0}%</b><span>общий прогресс</span></div>
       <div class="stat"><b>${s.lessons}</b><span>уроков изучено</span></div>

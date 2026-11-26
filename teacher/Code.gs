@@ -187,6 +187,7 @@ function api_(b) {
     case "summary": return summary_(who);
     case "student": return student_(who, b);
     case "changePassword": return changePassword_(who, b);
+    case "resetPin": return resetPin_(who, b);
     case "teachers": return who.role === "admin" ? teachers_() : { ok: false, error: "Только для администратора" };
     case "resetPassword": return who.role === "admin" ? resetPassword_(b) : { ok: false, error: "Только для администратора" };
     case "setActive": return who.role === "admin" ? setActive_(b) : { ok: false, error: "Только для администратора" };
@@ -322,7 +323,8 @@ function upsertStudent_(st, g, snap, progress, nEvents, now) {
   const s = snap || {};
   const prev = i >= 0 ? sh.getRange(i + 2, 1, 1, ST_HEAD.length).getValues()[0] : null;
   const row = [
-    st.sid, cut_(st.name, 80), cut_(st.cls, 20), txt_(st.pin) || (prev ? txt_(prev[3]) : ""),
+    st.sid, cut_(st.name, 80), cut_(st.cls, 20), // PIN из таблицы главнее: его мог сбросить учитель, а старое устройство ученика помнит прежний
+    (prev && prev[3] ? txt_(prev[3]) : txt_(st.pin)),
     prev ? prev[4] : now, now,
     s.pct != null ? s.pct : prev ? prev[6] : 0,
     s.lessons != null ? s.lessons : prev ? prev[7] : 0,
@@ -377,6 +379,27 @@ function lastEvents_(limit, allow, withCode) {
     out.push({ at: r[0], ts: r[1], sid: r[2], name: r[3], cls: r[4], type: r[5], module: r[6], item: r[7], title: r[8], ok: r[9], score: r[10], detail: r[11], code: withCode ? r[12] : (r[12] ? "1" : "") });
   }
   return out;
+}
+
+/* ---------- учитель сбрасывает PIN ученика ---------- */
+// Хэш считается так же, как на сайте (tracker.js → pinHash): SHA-256 от "ep|имя|класс|PIN".
+function pinHash_(name, cls, pin) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, "ep|" + norm_(name) + "|" + norm_(cls) + "|" + pin, Utilities.Charset.UTF_8);
+  return hex_(bytes);
+}
+
+function resetPin_(who, b) {
+  if (!visibleStudents_(who).some((x) => x.sid === b.sid)) return { ok: false, error: "Этот ученик не в ваших классах" };
+  return withLock_(() => {
+    const sh = sheet_(STUDENTS, ST_HEAD);
+    const ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map((r) => r[0]);
+    const i = ids.indexOf(b.sid);
+    if (i < 0) return { ok: false, error: "Ученик не найден" };
+    const r = sh.getRange(i + 2, 1, 1, 3).getValues()[0];
+    const pin = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+    sh.getRange(i + 2, 4).setValue(txt_(pinHash_(r[1], r[2], pin)));
+    return { ok: true, pin, name: r[1], cls: r[2] };
+  });
 }
 
 /* ---------- восстановление прогресса ученика ---------- */
