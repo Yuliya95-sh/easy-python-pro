@@ -714,3 +714,7 @@ details.t-quiz { margin-bottom: 12px; }
   .t-newclass-row { flex-direction: column; }
   .t-code-big { font-size: 26px; }
 }
+
+/* окно ученика: вкладки «Регистрация / Вход» на всю ширину */
+.ep-gate-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 2px; }
+.ep-gate-tabs .lesson-pill { justify-content: center; text-align: center; padding: 10px 8px; font-size: 15px; font-weight: 700; }

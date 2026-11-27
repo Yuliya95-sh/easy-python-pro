@@ -147,26 +147,30 @@
       g.className = "ep-gate";
       g.innerHTML = `<form class="ep-gate-box card" autocomplete="off">
         <span class="ep-label">Easy Python</span>
-        <h2>${restore ? "Восстановить прогресс" : "Давай познакомимся"}</h2>
+        <div class="lesson-nav t-tabs ep-gate-tabs">
+          <button type="button" class="lesson-pill ${restore ? "" : "active"}" data-a="reg">Регистрация</button>
+          <button type="button" class="lesson-pill ${restore ? "active" : ""}" data-a="login">Вход</button></div>
+        <h2>${restore ? "С возвращением!" : "Давай познакомимся"}</h2>
         <p class="muted small">${restore
-          ? "Введите те же имя, класс и PIN, что и в первый раз, — прогресс загрузится на это устройство."
+          ? "Уже занимались? Введите те же имя, класс и PIN, что при регистрации, — прогресс загрузится на это устройство."
           : "Учитель будет видеть ваши уроки, проверки задач и результаты тестов. PIN нужен, чтобы продолжить с другого устройства."}</p>
         <label>Фамилия и имя<input type="text" name="name" required minlength="3" maxlength="60" placeholder="Например: Ахметова Алия"></label>
         <label>Класс<input type="text" name="cls" required maxlength="12" placeholder="Например: 11А"></label>
-        <label>PIN — 4 цифры<input type="text" name="pin" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="Придумайте и запомните"></label>
+        <label>PIN — 4 цифры<input type="text" name="pin" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="${restore ? "Ваш PIN" : "Придумайте и запомните"}"></label>
         ${restore ? "" : `<label>Код класса от учителя <span class="muted" style="font-weight:400">(если есть)</span>
           <input type="text" name="group" maxlength="10" autocapitalize="characters" placeholder="Например: K7X2QP" value="${esc(ls.get(LS_JOIN, ""))}"></label>
           <div class="ep-gate-group small muted"></div>`}
         <div class="ep-gate-err small"></div>
-        <button class="btn btn-primary" type="submit">${restore ? "Восстановить" : "Начать"}</button>
-        <button class="btn btn-ghost" type="button" data-a="switch">${restore ? "Я здесь впервые" : "Я уже занимался(ась) — восстановить прогресс"}</button>
+        <button class="btn btn-primary" type="submit">${restore ? "Войти" : "Зарегистрироваться"}</button>
+        ${restore ? `<p class="small muted" style="text-align:center;margin:0">Забыли PIN? Попросите учителя сбросить его в кабинете.</p>` : ""}
         <a class="small" href="#/teacher" data-a="teacher" style="text-align:center;display:block;margin-top:4px">👩‍🏫 Я учитель — войти в кабинет</a>
       </form>`;
       document.body.appendChild(g);
       document.body.classList.add("gate-open");
       const f = g.querySelector("form");
       const err = g.querySelector(".ep-gate-err");
-      g.querySelector('[data-a="switch"]').onclick = () => this.showGate(restore ? "" : "restore");
+      g.querySelector('[data-a="reg"]').onclick = () => { if (restore) this.showGate(""); };
+      g.querySelector('[data-a="login"]').onclick = () => { if (!restore) this.showGate("restore"); };
       g.querySelector('[data-a="teacher"]').onclick = (e) => {
         e.preventDefault();
         g.remove(); document.body.classList.remove("gate-open");
