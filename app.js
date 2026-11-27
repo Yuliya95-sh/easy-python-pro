@@ -713,7 +713,7 @@ score = <span class="n">int</span>(<span class="n">input</span>())
     });
     $("#resetProgress", el).onclick = (e) => {
       e.preventDefault();
-      if (confirm("Удалить весь прогресс, сохранённый код и результаты тестов?")) { Store.reset(); render(); toast("Прогресс сброшен"); }
+      if (confirm("Удалить весь прогресс, сохранённый код и результаты тестов?")) { Store.reset(); if (window.EPTrack && EPTrack.student) EPTrack.progressWasReset(); render(); toast("Прогресс сброшен"); }
     };
     return el;
   }
@@ -1215,6 +1215,28 @@ score = <span class="n">int</span>(<span class="n">input</span>())
         },
         // прогресс без кода решений — для восстановления на другом устройстве
         progress: () => ({ lessons: Store.data.lessons, tasks: Store.data.tasks, quiz: Store.data.quiz, fails: Store.data.fails }),
+        // прогресс с другого устройства: добавляем решённое, ничего не удаляя
+        onMerge: (p) => {
+          const d = Store.data; let changed = false;
+          ["lessons", "tasks"].forEach((k) => Object.keys(p[k] || {}).forEach((x) => { if (p[k][x] && !d[k][x]) { d[k][x] = p[k][x]; changed = true; } }));
+          Object.keys(p.fails || {}).forEach((x) => { const v = Number(p.fails[x]) || 0; if (v > (d.fails[x] || 0)) { d.fails[x] = v; changed = true; } });
+          Object.keys(p.quiz || {}).forEach((x) => {
+            const q = p.quiz[x], c = d.quiz[x];
+            if (!c || (Number(q.best) || 0) > (Number(c.best) || 0) || (q.passed && !c.passed)) {
+              d.quiz[x] = Object.assign({}, c || {}, (Number(q.best) || 0) >= (Number((c || {}).best) || 0) ? q : {}, {
+                best: Math.max(Number(q.best) || 0, Number((c || {}).best) || 0), attempts: Math.max(Number(q.attempts) || 0, Number((c || {}).attempts) || 0),
+                passed: !!(q.passed || (c && c.passed)) });
+              changed = true;
+            }
+          });
+          if (changed) {
+            Store.save();
+            // не перерисовываем, пока ученик печатает код — обновится при следующем переходе
+            const typing = document.activeElement && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
+            if (!typing) render();
+            toast("Добавлен прогресс с другого устройства");
+          }
+        },
         onRestore: (p) => { Object.assign(Store.data, { lessons: p.lessons || {}, tasks: p.tasks || {}, quiz: p.quiz || {}, fails: p.fails || {} }); Store.save(); render(); toast("Прогресс восстановлен"); },
         onLogout: () => { Store.reset(); try { localStorage.setItem(STORE_KEY, JSON.stringify(Store.data)); } catch (e) {} render(); },
         onLogin: () => render(),

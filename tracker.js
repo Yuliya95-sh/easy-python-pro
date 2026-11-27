@@ -10,6 +10,7 @@
   const LS_ID = "eppro.student.v1";
   const LS_Q = "eppro.queue.v1";
   const LS_JOIN = "eppro.join.v1";   // код класса из ссылки-приглашения, пока ученик не вошёл
+  const LS_RESET = "eppro.progressReset.v1";   // ученик сбросил прогресс — журнал должен заменить, а не объединить
   const MAX_Q = 3000;
 
   const ls = {
@@ -37,7 +38,7 @@
   const T = {
     student: ls.get(LS_ID, null),
     queue: ls.get(LS_Q, []),
-    hooks: { snapshot: () => null, progress: () => null, onRestore: () => {} },
+    hooks: { snapshot: () => null, progress: () => null, onRestore: () => {}, onMerge: () => {} },
     sending: false,
     lastOpen: "",
     enabled() { return !!endpoint(); },
@@ -48,11 +49,14 @@
       setInterval(() => this.flush(), 15000);
       addEventListener("online", () => this.flush());
       addEventListener("pagehide", () => this.flush(true));
-      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") this.flush(true); });
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") this.flush(true);
+        else if (this.student) { this.markSnapshot(); this.flush(); }   // вернулись на вкладку — подтянем прогресс с других устройств
+      });
       addEventListener("hashchange", () => this.catchJoinLink());
       this.catchJoinLink();
       if (!this.student) this.showGate();
-      else this.flush();
+      else { this.markSnapshot(); this.flush(); }
     },
 
     /* ---------- класс учителя: код и ссылка-приглашение #/join/КОД ---------- */
@@ -106,7 +110,8 @@
     },
 
     payload(events) {
-      return JSON.stringify({ student: this.student, events, snapshot: this.hooks.snapshot(), progress: this.hooks.progress() });
+      return JSON.stringify({ student: this.student, events, snapshot: this.hooks.snapshot(), progress: this.hooks.progress(),
+        progressReset: ls.get(LS_RESET, false) || undefined });
     },
 
     async flush(beacon) {
@@ -125,13 +130,19 @@
         // text/plain — «простой» запрос без предварительной проверки CORS
         const r = await fetch(url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
         const j = await r.json().catch(() => ({ ok: r.ok }));
-        if (j.ok) { this.drop(batch.length); this._dirtySnap = false; }
+        if (j.ok) {
+          this.drop(batch.length); this._dirtySnap = false; ls.del(LS_RESET);
+          // на другом устройстве ученик успел больше — добавим к прогрессу здесь
+          if (j.progress) { this.hooks.onMerge(j.progress); this.markSnapshot(); }
+        }
       } catch (e) { /* нет связи — попробуем позже */ }
       this.sending = false;
       if (this.queue.length) setTimeout(() => this.flush(), 2000);
     },
     drop(n) { this.queue = this.queue.slice(n); ls.set(LS_Q, this.queue); },
     markSnapshot() { this._dirtySnap = true; },
+    // ученик сам сбросил прогресс: следующая отправка заменит прогресс в журнале, а не объединит
+    progressWasReset() { ls.set(LS_RESET, true); this.markSnapshot(); this.flush(); },
 
     /* ---------- окно входа ---------- */
     showGate(mode) {
@@ -180,7 +191,7 @@
       setTimeout(() => f.name.focus(), 50);
       // проверяем код класса сразу, чтобы ученик видел, к какому учителю попадёт
       const gInfo = g.querySelector(".ep-gate-group");
-      let checked = { code: "", g: null };
+      let checked = { code: "", g: null }, dupWarned = "";
       const checkCode = async () => {
         const code = (f.group && f.group.value.trim().toUpperCase()) || "";
         if (!gInfo) return null;
@@ -218,6 +229,31 @@
           } catch (x) { err.textContent = "Нет связи с журналом. Проверьте интернет."; btn.disabled = false; }
           return;
         }
+        // уже зарегистрирован? те же имя, класс и PIN — просто входим; то же имя без PIN — подсказываем «Вход»
+        btn.disabled = true;
+        try {
+          const u = new URL(endpoint()); u.searchParams.set("action", "restore");
+          u.searchParams.set("name", name); u.searchParams.set("cls", cls); u.searchParams.set("pin", hash);
+          const j = await (await fetch(u)).json();
+          if (j.ok) {
+            this.setStudent({ sid: j.sid, name: j.name, cls: j.cls, pin: hash, group: j.group || "", groupTitle: j.groupTitle || "" });
+            if (j.progress) this.hooks.onRestore(j.progress);
+            this.log({ type: "login", title: "Вход (повторная регистрация)" });
+            this.closeGate(); return;
+          }
+          const key = norm(name) + "|" + norm(cls);
+          if (dupWarned !== key) {
+            const u2 = new URL(endpoint()); u2.searchParams.set("action", "exists");
+            u2.searchParams.set("name", name); u2.searchParams.set("cls", cls);
+            const k = await (await fetch(u2)).json();
+            if (k.ok && k.exists) {
+              dupWarned = key; btn.disabled = false;
+              err.innerHTML = `Ученик «${esc(name)}», класс ${esc(cls)} уже зарегистрирован. Если это вы — откройте вкладку <b>«Вход»</b> (забыли PIN — учитель сбросит). Если это другой человек — нажмите «Зарегистрироваться» ещё раз.`;
+              return;
+            }
+          }
+        } catch (x) { /* нет связи — регистрируем как обычно */ }
+        btn.disabled = false;
         let grp = null;
         if (f.group && f.group.value.trim()) {
           btn.disabled = true;

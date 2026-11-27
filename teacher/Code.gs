@@ -160,6 +160,10 @@ function doGet(e) {
   const p = e.parameter || {};
   try {
     if (p.action === "restore") return json_(restore_(p));
+    if (p.action === "exists") {
+      const found = rows_(sheet_(STUDENTS, ST_HEAD), ST_HEAD.length).some((r) => r[0] && norm_(r[1]) === norm_(p.name) && norm_(r[2]) === norm_(p.cls));
+      return json_({ ok: true, exists: found });
+    }
     if (p.action === "group") {
       const g = groupByCode_(p.code);
       if (!g) return json_({ ok: false, error: "Класс с таким кодом не найден" });
@@ -311,17 +315,49 @@ function saveEvents_(body) {
       sh.getRange(sh.getLastRow() + 1, 1, rows.length, EV_HEAD.length).setValues(rows);
     }
     const g = groupByCode_(st.group);
-    upsertStudent_(st, g, body.snapshot, body.progress, events.filter((ev) => !ev.sid || ev.sid === st.sid).length, now);
-    return { ok: true, group: g ? { code: g.code, title: g.title } : null };
+    const merged = upsertStudent_(st, g, body.snapshot, body.progress, events.filter((ev) => !ev.sid || ev.sid === st.sid).length, now, body.progressReset);
+    // если на других устройствах ученик успел больше — вернём общий прогресс
+    return { ok: true, group: g ? { code: g.code, title: g.title } : null, progress: merged };
   });
 }
 
-function upsertStudent_(st, g, snap, progress, nEvents, now) {
+/* ---------- прогресс с нескольких устройств: объединяем, ничего не теряя ---------- */
+function mergeProgress_(a, b) {
+  a = a || {}; b = b || {};
+  const out = {};
+  ["lessons", "tasks"].forEach((k) => {
+    out[k] = Object.assign({}, a[k] || {});
+    Object.keys(b[k] || {}).forEach((x) => { if (b[k][x]) out[k][x] = b[k][x]; });
+  });
+  out.fails = Object.assign({}, a.fails || {});
+  Object.keys(b.fails || {}).forEach((x) => { out.fails[x] = Math.max(Number(out.fails[x]) || 0, Number(b.fails[x]) || 0); });
+  out.quiz = Object.assign({}, a.quiz || {});
+  Object.keys(b.quiz || {}).forEach((x) => {
+    const p = out.quiz[x], q = b.quiz[x];
+    if (!p) { out.quiz[x] = q; return; }
+    const top = (Number(q.best) || 0) > (Number(p.best) || 0) ? q : p;
+    out.quiz[x] = Object.assign({}, top, {
+      best: Math.max(Number(p.best) || 0, Number(q.best) || 0),
+      attempts: Math.max(Number(p.attempts) || 0, Number(q.attempts) || 0),
+      passed: !!(p.passed || q.passed),
+    });
+  });
+  return out;
+}
+
+// → объединённый прогресс, если он отличается от присланного (иначе null)
+function upsertStudent_(st, g, snap, progress, nEvents, now, reset) {
   const sh = sheet_(STUDENTS, ST_HEAD);
   const ids = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map((r) => r[0]) : [];
   const i = ids.indexOf(st.sid);
   const s = snap || {};
   const prev = i >= 0 ? sh.getRange(i + 2, 1, 1, ST_HEAD.length).getValues()[0] : null;
+  let merged = null;
+  if (progress && prev && prev[12] && !reset) {
+    const m = mergeProgress_(progress, safeParse_(prev[12], {}));
+    if (JSON.stringify(m) !== JSON.stringify(mergeProgress_(progress, {}))) merged = m;
+    progress = m;
+  }
   const row = [
     st.sid, cut_(st.name, 80), cut_(st.cls, 20), // PIN из таблицы главнее: его мог сбросить учитель, а старое устройство ученика помнит прежний
     (prev && prev[3] ? txt_(prev[3]) : txt_(st.pin)),
@@ -340,6 +376,7 @@ function upsertStudent_(st, g, snap, progress, nEvents, now) {
   ];
   if (i >= 0) sh.getRange(i + 2, 1, 1, ST_HEAD.length).setValues([row]);
   else sh.appendRow(row);
+  return merged;
 }
 
 /* ---------- чтение для учителя ---------- */
